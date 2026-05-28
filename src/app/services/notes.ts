@@ -3,19 +3,27 @@ import { HttpClient } from '@angular/common/http';
 import { map } from 'rxjs/operators';
 import { Observable } from 'rxjs';
 
+export interface NoteVersion {
+  fecha: string;
+  titulo: string;
+  contenido: string;
+}
+
 export interface Note {
   id?: string;
   titulo: string;
   contenido: string;
   fechaCreacion: string;
   fechaActualizacion: string;
+  categoria?: string;
+  compartida?: boolean;
+  historial?: NoteVersion[];
 }
 
 @Injectable({
   providedIn: 'root'
 })
 export class NotesService {
-  // ⚠️ Asegúrate de colocar la URL correcta de tu Firebase Realtime Database aquí:
   private baseUrl = 'https://proyectoprograweb-19bf1-default-rtdb.firebaseio.com/notas';
 
   public notes = signal<Note[]>([]);
@@ -43,8 +51,7 @@ export class NotesService {
           this.isLoading.set(false);
         },
         error: (err) => {
-          console.error('Error en Firebase REST API:', err);
-          alert('Error al conectar con la base de datos de Firebase.');
+          console.error(err);
           this.isLoading.set(false);
         }
       });

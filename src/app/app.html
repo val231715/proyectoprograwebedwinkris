@@ -30,13 +30,18 @@
         
         <div class="notes-stack">
           <div 
-            *ngFor="let item of notesService.notes()" 
+            *ngFor="let item of notesService.notes(); let i = index" 
             class="note-tile"
             [class.tile-active]="selectedNote()?.id === item.id && currentView === 'editor'"
             (click)="currentView = 'editor'; selectNote(item)"
+            draggable="true"
+            (dragstart)="onDragStart(i)"
+            (dragover)="onDragOver($event)"
+            (drop)="onDrop(i)"
           >
             <div class="tile-meta">
               <h4>{{ item.titulo || 'Documento sin título' }}</h4>
+              <small *ngIf="item.categoria" style="font-size: 0.65rem; opacity: 0.7; display: block; letter-spacing: 0.05em;">🏷️ {{item.categoria}}</small>
             </div>
             <button class="tile-delete" (click)="confirmDelete(item.id, $event)">
               <i class="bi bi-x-lg"></i>
@@ -53,15 +58,6 @@
             <i class="bi bi-filetype-pdf"></i> Texto a PDF
           </li>
           <li (click)="currentView = 'editor'"><i class="bi bi-blockquote-left"></i> Resumidor De Textos</li>
-        </ul>
-      </div>
-
-      <div class="menu-section">
-        <div class="section-heading">Otros</div>
-        <ul class="static-menu-list">
-          <li><i class="bi bi-chat-left-text"></i> Comentario</li>
-          <li><i class="bi bi-trash"></i> Basura</li>
-          <li><i class="bi bi-three-dots"></i> Más</li>
         </ul>
       </div>
     </div>
@@ -84,9 +80,9 @@
         </div>
         
         <div class="top-right-actions">
-          <button class="icon-btn-search"><i class="bi bi-search"></i> Buscar... <span class="kbd">Ctrl K</span></button>
-          <button class="icon-btn-top"><i class="bi bi-moon"></i></button>
-          <button class="icon-btn-user"><i class="bi bi-person"></i></button>
+          <button class="icon-btn-top" (click)="toggleDarkMode()">
+            <i class="bi" [class.bi-moon]="!isDarkMode()" [class.bi-sun]="isDarkMode()"></i>
+          </button>
         </div>
       </div>
 
@@ -115,15 +111,20 @@
         <button (click)="formatText('bold')" title="Negrita"><i class="bi bi-type-bold"></i></button>
         <button (click)="formatText('italic')" title="Cursiva"><i class="bi bi-type-italic"></i></button>
         <button (click)="formatText('underline')" title="Subrayado"><i class="bi bi-type-underline"></i></button>
-        <button (click)="formatText('strikeThrough')" title="Tachado"><i class="bi bi-type-strikethrough"></i></button>
-        <button (click)="formatText('code')" title="Código"><i class="bi bi-code-slash"></i></button>
-        <button (click)="formatText('createLink', 'https://')" title="Enlace"><i class="bi bi-link-45deg"></i></button>
-
+        
         <span class="divider"></span>
 
-        <button (click)="formatText('justifyLeft')" title="Izquierda"><i class="bi bi-text-left"></i></button>
+        <button (click)="formatText('justifyLeft')" title="Alinear a la izquierda"><i class="bi bi-text-left"></i></button>
         <button (click)="formatText('justifyCenter')" title="Centrar"><i class="bi bi-text-center"></i></button>
-        <button (click)="formatText('justifyRight')" title="Derecha"><i class="bi bi-text-right"></i></button>
+        <button (click)="formatText('justifyRight')" title="Alinear a la derecha"><i class="bi bi-text-right"></i></button>
+        <button (click)="formatText('justifyFull')" title="Justificar/Ajustar texto"><i class="bi bi-justify"></i></button>
+        
+        <span class="divider"></span>
+
+        <button (click)="applyMarkdown()" title="Compilar Markdown"><i class="bi bi-markdown"></i> MD</button>
+        <button (click)="assignCategory()" title="Etiquetar Nota"><i class="bi bi-tags"></i> Tag</button>
+        <button (click)="viewHistory()" title="Historial de cambios"><i class="bi bi-journal-text"></i> Historial</button>
+        <button (click)="shareNote()" title="Compartir nota"><i class="bi bi-share"></i> Compartir</button>
         
         <span class="divider"></span>
         
@@ -137,13 +138,9 @@
           id="wysiwyg-editor" 
           contenteditable="true" 
           (input)="onInputChange()"
-          data-placeholder="Empieza a escribir, presiona '/' para comandos..."
+          data-placeholder="Empieza a escribir... (Soporta Markdown # Título, **Negrita**, *Cursiva*)"
           class="rich-text-area"
         ></div>
-        
-        <button class="ai-floating-btn" *ngIf="!noteTitle && !notesService.isLoading()">
-          <i class="bi bi-stars"></i> Ayúdame a escribir
-        </button>
       </div>
     </div>
 
@@ -159,18 +156,82 @@
     </div>
 
     <footer class="editor-bottom-bar">
-      <button class="footer-action-btn"><i class="bi bi-upload"></i> Subir Doc</button>
+      <button class="footer-action-btn" (click)="downloadFile()">
+        <i class="bi bi-hdd"></i> Guardar archivo
+      </button>
       
       <div class="cloud-status-center">
-        <span *ngIf="isSaving()" class="status-text saving"><i class="bi bi-cloud-arrow-up"></i> Guardando cambios...</span>
-        <span *ngIf="!isSaving() && selectedNote()" class="status-text saved"><i class="bi bi-cloud-check"></i> Guardado en la nube</span>
+        <span *ngIf="isSaving()" class="status-text saving"><i class="bi bi-cloud-arrow-up"></i> Guardando automáticamente...</span>
+        <span *ngIf="!isSaving() && selectedNote()" class="status-text saved"><i class="bi bi-cloud-check"></i> Sincronizado en la nube</span>
       </div>
 
       <div class="footer-right-actions">
-        <button class="icon-btn-footer" title="Copiar"><i class="bi bi-copy"></i></button>
-        <button class="icon-btn-footer" title="Descargar"><i class="bi bi-download"></i></button>
+        <button class="icon-btn-footer" (click)="copyToClipboard()" title="Copiar todo el lienzo"><i class="bi bi-copy"></i></button>
+        <button class="icon-btn-footer" (click)="exportToPDF()" title="Exportar nota a PDF"><i class="bi bi-file-pdf"></i></button>
         <button class="icon-btn-footer danger" (click)="startNewNote()" title="Borrar lienzo"><i class="bi bi-trash3"></i></button>
       </div>
     </footer>
   </div>
+
+  <div class="history-modal-overlay" *ngIf="showHistoryModal()">
+    <div class="history-modal-card">
+      <div class="history-modal-header">
+        <h3><i class="bi bi-journal-text"></i> Historial de Cambios</h3>
+        <button class="close-modal-btn" (click)="showHistoryModal.set(false)"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="history-modal-body">
+        <p class="history-help-text">Selecciona una versión guardada automáticamente para volcar su contenido de vuelta al lienzo:</p>
+        <div class="history-timeline-list">
+          <div class="history-timeline-item" *ngFor="let version of selectedNote()?.historial">
+            <div class="history-item-meta">
+              <span class="history-item-time">⏱️ {{ version.fecha | date:'shortTime' }} - {{ version.fecha | date:'mediumDate' }}</span>
+              <h5 class="history-item-title">{{ version.titulo }}</h5>
+            </div>
+            <button class="btn-restore-version" (click)="restoreVersion(version)">
+              <i class="bi bi-arrow-counterclockwise"></i> Restaurar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="history-modal-overlay" *ngIf="showShareModal()">
+    <div class="history-modal-card share-card-width">
+      <div class="history-modal-header">
+        <h3><i class="bi bi-share"></i> Compartir Documento</h3>
+        <button class="close-modal-btn" (click)="showShareModal.set(false)"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="history-modal-body">
+        
+        <div class="share-privacy-control">
+          <div class="privacy-info">
+            <span class="privacy-status-badge" [class.public]="selectedNote()?.compartida">
+              {{ selectedNote()?.compartida ? '🟢 Público' : '🔴 Privado' }}
+            </span>
+            <p class="privacy-desc">Cualquiera con el enlace podrá leer esta nota en tiempo real.</p>
+          </div>
+          <label class="switch-toggle">
+            <input type="checkbox" [checked]="selectedNote()?.compartida" (change)="toggleSharePrivacy($event)">
+            <span class="slider-round"></span>
+          </label>
+        </div>
+
+        <div class="share-link-box" *ngIf="selectedNote()?.compartida">
+          <input type="text" readonly [value]="getShareUrl()" class="share-url-input">
+          <button class="btn-copy-link" [class.copied]="linkCopied()" (click)="copyShareLink()">
+            <i class="bi" [class.bi-clipboard]="!linkCopied()" [class.bi-check-lg]="linkCopied()"></i>
+            {{ linkCopied() ? '¡Copiado!' : 'Copiar' }}
+          </button>
+        </div>
+
+        <div class="share-disabled-notice" *ngIf="!selectedNote()?.compartida">
+          <i class="bi bi-lock-fill"></i>
+          <p>Activa el interruptor superior para habilitar el enlace público.</p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
 </div>
